@@ -374,15 +374,17 @@ function contratoToRow(c){var o={};['id','fornecedor','unidade','recebimento','r
 function rowToContrato(o){var m={};MES.forEach(function(k){m[k]=toCode(o[k])});return{id:o.id||uid(),fornecedor:o.fornecedor||'',unidade:o.unidade||'',recebimento:o.recebimento||'',req:o.req||'',temPedido:o.temPedido||'',pedido:o.pedido||'',pedido2025:o.pedido2025||'',diaRecebimento:o.diaRecebimento===0?'':(o.diaRecebimento||''),diaLimite:o.diaLimite===0?'':(o.diaLimite||''),vencimento:o.vencimento===0?'':(o.vencimento||''),valor:parseNum(o.valor),forma:o.forma||'',meses:m,login:o.login||'',senha:o.senha||'',telefone:o.telefone||'',email:o.email||'',link:o.link||'',obs:o.obs||''}}
 function rowToLanc(o){return{id:o.id||uid(),oc:o.oc||'',fornecedor:o.fornecedor||'',valor:parseNum(o.valor),descOC:o.descOC||'',nf:o.nf||'',migo:o.migo||'',dtLanc:o.dtLanc||'',sharepoint:o.sharepoint||''}}
 function apiUrl(params){var u=API;if(params)u+=(u.indexOf('?')>=0?'&':'?')+params;return u}
-function apiGet(sheet,cb,attempt){
+var __jsonpId=0;
+function apiGet(sheet,cb){
   if(!remoteOn()){if(cb)cb(new Error('sem API'));return}
-  attempt=attempt||1;setStatus('loading');
-  var ctrl=(typeof AbortController!=='undefined')?new AbortController():null;
-  var timer=ctrl?setTimeout(function(){ctrl.abort()},25000):null;
-  fetch(apiUrl('sheet='+encodeURIComponent(sheet)),{method:'GET',signal:ctrl?ctrl.signal:undefined})
-    .then(function(r){if(timer)clearTimeout(timer);return r.json()})
-    .then(function(d){setStatus('ok');if(cb)cb(null,d)})
-    .catch(function(e){if(timer)clearTimeout(timer);if(attempt<3){setTimeout(function(){apiGet(sheet,cb,attempt+1)},1500*attempt)}else{setStatus('err');if(cb)cb(e)}});
+  setStatus('loading');
+  var cbName='__gpag_cb_'+(++__jsonpId);var s=document.createElement('script');var done=false;
+  function cleanup(){try{delete window[cbName]}catch(e){window[cbName]=undefined}if(s.parentNode)s.parentNode.removeChild(s);clearTimeout(tm)}
+  var tm=setTimeout(function(){if(done)return;done=true;cleanup();setStatus('err');if(cb)cb(new Error('tempo esgotado'))},25000);
+  window[cbName]=function(data){if(done)return;done=true;cleanup();setStatus('ok');if(cb)cb(null,data)};
+  s.onerror=function(){if(done)return;done=true;cleanup();setStatus('err');if(cb)cb(new Error('falha ao conectar (verifique a URL e o deploy)'))};
+  s.src=apiUrl('sheet='+encodeURIComponent(sheet)+'&callback='+cbName);
+  document.body.appendChild(s);
 }
 function apiWrite(body,cb){
   if(!remoteOn()){if(cb)cb(new Error('sem API'));return}
