@@ -494,7 +494,7 @@ function filterContratos(){
 }
 function renderPagamentos(){
   document.getElementById('legend').innerHTML=legendHTML();
-  var list=filterContratos();
+  var list=filterContratos().sort(function(a,b){return(a.fornecedor||'').localeCompare(b.fornecedor||'','pt-BR',{sensitivity:'base'})});
   var th='<thead><tr><th>Fornecedor</th><th>Unidade</th><th>Requisição</th><th>Pedido 2026</th><th class="num">Valor</th><th class="ctr" title="Dia de recebimento da fatura">Receb.</th><th class="ctr" title="Dia limite para lançamento">Lançam.</th><th class="ctr" title="Dia de vencimento">Venc.</th>'+MES_LBL.map(function(m,i){return'<th class="ctr"'+(i===refMonth?' style="color:#24365e;background:#e4ecf7"':'')+'>'+m+'</th>'}).join('')+'<th style="width:70px"></th></tr></thead>';
   var rows=list.map(function(c){
     var cells=MES.map(function(_,i){return'<td class="ctr">'+mcell(c,i)+'</td>'}).join('');
