@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 
 /* ------------------------------------------------------------------ */
 /*  Controle de Parcelas — gerenciador de gastos no cartão de crédito  */
@@ -71,10 +71,14 @@ const store = {
 export default function App() {
   const [cards, setCards] = useState([]);
   const [expenses, setExpenses] = useState([]);
+  const [emprestimos, setEmprestimos] = useState([]);
+  const [casa, setCasa] = useState([]);
+  const [carro, setCarro] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [filterCard, setFilterCard] = useState("all");
   const [showCardForm, setShowCardForm] = useState(false);
   const [expenseModal, setExpenseModal] = useState(null); // null | {} | expense
+  const [financaModal, setFinancaModal] = useState(null); // null | { category, initial }
   const [activeTab, setActiveTab] = useState("home");
 
   // inject fonts once
@@ -92,12 +96,18 @@ export default function App() {
   // load saved data
   useEffect(() => {
     (async () => {
-      const [c, e] = await Promise.all([
+      const [c, e, emp, cas, car] = await Promise.all([
         store.get("cp_cards", []),
         store.get("cp_expenses", []),
+        store.get("cp_emprestimos", []),
+        store.get("cp_casa", []),
+        store.get("cp_carro", []),
       ]);
       setCards(c);
       setExpenses(e);
+      setEmprestimos(emp);
+      setCasa(cas);
+      setCarro(car);
       setLoaded(true);
     })();
   }, []);
@@ -109,6 +119,15 @@ export default function App() {
   useEffect(() => {
     if (loaded) store.set("cp_expenses", expenses);
   }, [expenses, loaded]);
+  useEffect(() => {
+    if (loaded) store.set("cp_emprestimos", emprestimos);
+  }, [emprestimos, loaded]);
+  useEffect(() => {
+    if (loaded) store.set("cp_casa", casa);
+  }, [casa, loaded]);
+  useEffect(() => {
+    if (loaded) store.set("cp_carro", carro);
+  }, [carro, loaded]);
 
   /* ----------------------------- actions ---------------------------- */
   const addCard = (card) => {
@@ -147,6 +166,31 @@ export default function App() {
           : e
       )
     );
+
+  const saveFinanca = (category, data) => {
+    const setters = { emprestimos: setEmprestimos, casa: setCasa, carro: setCarro };
+    const lists = { emprestimos, casa, carro };
+    const list = lists[category];
+    const updated = data.id ? list.map(x => x.id === data.id ? data : x) : [...list, { ...data, id: uid() }];
+    setters[category](updated);
+    setFinancaModal(null);
+  };
+
+  const deleteFinanca = (category, id) => {
+    if (!window.confirm("Excluir este registro?")) return;
+    const setters = { emprestimos: setEmprestimos, casa: setCasa, carro: setCarro };
+    const lists = { emprestimos, casa, carro };
+    const updated = lists[category].filter(x => x.id !== id);
+    setters[category](updated);
+  };
+
+  const setFinancaPaid = (category, id, n) => {
+    const setters = { emprestimos: setEmprestimos, casa: setCasa, carro: setCarro };
+    const lists = { emprestimos, casa, carro };
+    const list = lists[category];
+    const updated = list.map(x => x.id === id ? { ...x, paidInstallments: Math.min(x.totalInstallments, Math.max(0, n)) } : x);
+    setters[category](updated);
+  };
 
   /* --------------------------- derived data ------------------------- */
   const cardById = useMemo(
@@ -201,6 +245,7 @@ export default function App() {
           totals={totals}
           cardTotals={cardTotals}
           cardById={cardById}
+          onReport={() => setActiveTab("report")}
         />
       )}
       {activeTab === "cards" && (
@@ -232,6 +277,18 @@ export default function App() {
           enrich={enrich}
         />
       )}
+      {activeTab === "financas" && (
+        <FinancasView
+          emprestimos={emprestimos}
+          casa={casa}
+          carro={carro}
+          enrich={enrich}
+          onAdd={(cat) => setFinancaModal({ category: cat, initial: {} })}
+          onEdit={(cat, e) => setFinancaModal({ category: cat, initial: e })}
+          onDelete={deleteFinanca}
+          setPaid={setFinancaPaid}
+        />
+      )}
 
       <BottomNav
         active={activeTab}
@@ -249,6 +306,14 @@ export default function App() {
           defaultCard={filterCard !== "all" ? filterCard : cards[0]?.id}
           onSave={saveExpense}
           onClose={() => setExpenseModal(null)}
+        />
+      )}
+      {financaModal && (
+        <FinancaForm
+          category={financaModal.category}
+          initial={financaModal.initial}
+          onSave={(data) => saveFinanca(financaModal.category, data)}
+          onClose={() => setFinancaModal(null)}
         />
       )}
     </div>
@@ -309,7 +374,7 @@ function DonutChart({ segments, centerLabel }) {
   );
 }
 
-function HomeView({ cards, expenses, enrich, totals, cardTotals, cardById }) {
+function HomeView({ cards, expenses, enrich, totals, cardTotals, cardById, onReport }) {
   const now = new Date();
   const monthName = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho",
     "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"][now.getMonth()];
@@ -329,9 +394,20 @@ function HomeView({ cards, expenses, enrich, totals, cardTotals, cardById }) {
     <div>
       {/* purple gradient header */}
       <div style={s.homeHeader}>
-        <div style={s.homeHeaderKicker}>controle de parcelas</div>
-        <h1 style={s.homeHeaderTitle}>Controle de Parcelas</h1>
-        <div style={s.homeHeaderSub}>{monthName} {year}</div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div>
+            <div style={s.homeHeaderKicker}>controle de parcelas</div>
+            <h1 style={s.homeHeaderTitle}>Controle de Parcelas</h1>
+            <div style={s.homeHeaderSub}>{monthName} {year}</div>
+          </div>
+          <button
+            type="button"
+            style={{ ...s.headerGhostBtn, color: "#fff", borderColor: "rgba(255,255,255,0.6)", marginTop: 4 }}
+            onClick={onReport}
+          >
+            📊 Relatório
+          </button>
+        </div>
       </div>
 
       <div style={s.homeBody}>
@@ -553,7 +629,198 @@ function ExpensesView({ expenses, cards, enrich, cardById, filterCard, setFilter
   );
 }
 function ReportView({ expenses, cards, cardById, enrich }) {
-  return <div style={{ padding: "24px 20px", color: C.muted }}>Relatório — em breve</div>;
+  const [selCards, setSelCards] = useState([]);
+  const [selMonths, setSelMonths] = useState([]);
+  const [selStatus, setSelStatus] = useState("all");
+
+  const availableMonths = useMemo(() => {
+    const set = new Set(expenses.map((e) => e.date?.slice(0, 7)).filter(Boolean));
+    return Array.from(set).sort().reverse();
+  }, [expenses]);
+
+  const filtered = useMemo(() => {
+    let list = expenses.map(enrich);
+    if (selCards.length) list = list.filter((e) => selCards.includes(e.cardId));
+    if (selMonths.length) list = list.filter((e) => selMonths.some((m) => e.date?.startsWith(m)));
+    if (selStatus === "active") list = list.filter((e) => !e.done);
+    if (selStatus === "done") list = list.filter((e) => e.done);
+    return list.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  }, [expenses, selCards, selMonths, selStatus, enrich]);
+
+  const summary = useMemo(() => ({
+    total: filtered.reduce((s, e) => s + e.total, 0),
+    monthly: filtered.filter((e) => !e.done).reduce((s, e) => s + e.monthly, 0),
+    remaining: filtered.filter((e) => !e.done).reduce((s, e) => s + e.remaining, 0),
+    activeCount: filtered.filter((e) => !e.done).length,
+  }), [filtered]);
+
+  const fmtMonth = (ym) => {
+    const [y, m] = ym.split("-");
+    return `${MONTHS_PT[+m - 1]}/${y.slice(2)}`;
+  };
+
+  const toggleCard = (id) =>
+    setSelCards((p) => (p.includes(id) ? p.filter((c) => c !== id) : [...p, id]));
+  const toggleMonth = (m) =>
+    setSelMonths((p) => (p.includes(m) ? p.filter((x) => x !== m) : [...p, m]));
+
+  return (
+    <div>
+      <div style={s.viewHeader}>
+        <h1 style={s.viewTitle}>Relatório</h1>
+        <button type="button" style={s.headerGhostBtn} onClick={() => window.print()}>
+          ⬇ PDF
+        </button>
+      </div>
+      <div style={s.viewBody}>
+
+        {/* Filtro Cartão */}
+        <div style={s.repSection}>
+          <div style={s.repSectionLabel}>Cartão</div>
+          <div style={s.filterChipsRow}>
+            {cards.map((c) => {
+              const on = selCards.includes(c.id);
+              return (
+                <button
+                  type="button"
+                  key={c.id}
+                  style={{
+                    ...s.filterChip,
+                    ...(on ? { background: c.color, color: "#fff", borderColor: c.color } : {}),
+                  }}
+                  onClick={() => toggleCard(c.id)}
+                >
+                  <span style={{ ...s.filterChipDot, background: on ? "rgba(255,255,255,.7)" : c.color }} />
+                  {c.name}
+                </button>
+              );
+            })}
+            {selCards.length > 0 && (
+              <button type="button" style={s.repClear} onClick={() => setSelCards([])}>
+                × limpar
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Filtro Mês */}
+        {availableMonths.length > 0 && (
+          <div style={s.repSection}>
+            <div style={s.repSectionLabel}>Mês de compra</div>
+            <div style={s.filterChipsRow}>
+              {availableMonths.map((m) => {
+                const on = selMonths.includes(m);
+                return (
+                  <button
+                    type="button"
+                    key={m}
+                    style={{ ...s.filterChip, ...(on ? { background: C.primary, color: "#fff", borderColor: C.primary } : {}) }}
+                    onClick={() => toggleMonth(m)}
+                  >
+                    {fmtMonth(m)}
+                  </button>
+                );
+              })}
+              {selMonths.length > 0 && (
+                <button type="button" style={s.repClear} onClick={() => setSelMonths([])}>
+                  × limpar
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Filtro Status */}
+        <div style={{ ...s.statusToggle, marginBottom: 16 }}>
+          {[["all","Todos"],["active","Ativos"],["done","Quitados"]].map(([v, l]) => (
+            <button
+              type="button"
+              key={v}
+              style={{ ...s.statusBtn, ...(selStatus === v ? s.statusBtnOn : {}) }}
+              onClick={() => setSelStatus(v)}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
+
+        {/* Resumo */}
+        <div style={s.repSummary}>
+          {[
+            ["compras", filtered.length, C.ink, false],
+            ["ativas", summary.activeCount, C.primary, false],
+            ["total gasto", summary.total, C.ink, true],
+            ["parc./mês", summary.monthly, C.primary, true],
+            ["a pagar", summary.remaining, C.green, true],
+          ].map(([lbl, val, color, isBrl], i, arr) => (
+            <React.Fragment key={lbl}>
+              <div style={s.repSumCell}>
+                <span style={s.repSumLabel}>{lbl}</span>
+                <span style={{ ...s.repSumVal, color }}>
+                  {isBrl ? brl(val) : val}
+                </span>
+              </div>
+              {i < arr.length - 1 && <div style={s.homeStatDiv} />}
+            </React.Fragment>
+          ))}
+        </div>
+
+        {/* Tabela */}
+        {filtered.length === 0 ? (
+          <p style={{ color: C.muted, textAlign: "center", padding: "16px 0", margin: 0, fontSize: 14 }}>
+            Nenhuma compra para os filtros selecionados.
+          </p>
+        ) : (
+          <div style={s.repTableWrap}>
+            <table style={s.repTable}>
+              <thead>
+                <tr>
+                  {["Fornecedor","Cartão","Data","Total","Parc./mês","Pagas","A pagar","Status"].map((h) => (
+                    <th key={h} style={s.repTh}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((e) => {
+                  const card = cardById[e.cardId];
+                  return (
+                    <tr key={e.id} style={{ opacity: e.done ? 0.65 : 1 }}>
+                      <td style={s.repTd}>{e.supplier}</td>
+                      <td style={s.repTd}>
+                        <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ ...s.filterChipDot, background: card?.color || C.muted }} />
+                          {card?.name || "—"}
+                        </span>
+                      </td>
+                      <td style={{ ...s.repTd, ...s.repMono }}>{formatDate(e.date)}</td>
+                      <td style={{ ...s.repTd, ...s.repMono, textAlign: "right" }}>{brl(e.total)}</td>
+                      <td style={{ ...s.repTd, ...s.repMono, textAlign: "right" }}>{brl(e.monthly)}</td>
+                      <td style={{ ...s.repTd, ...s.repMono, textAlign: "center" }}>
+                        {e.paidInstallments}/{e.totalInstallments}
+                      </td>
+                      <td style={{ ...s.repTd, ...s.repMono, textAlign: "right", color: e.done ? C.muted : C.primary }}>
+                        {e.done ? "—" : brl(e.remaining)}
+                      </td>
+                      <td style={s.repTd}>
+                        <span style={{
+                          ...s.doneTag,
+                          color: e.done ? C.green : C.primary,
+                          background: e.done ? "#D1FAE5" : "#EDE9FE",
+                          border: `1px solid ${e.done ? "#A7F3D0" : "#C4B5FD"}`,
+                        }}>
+                          {e.done ? "quitado" : "ativo"}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 /* ---------------------- bottom navigation ------------------------- */
@@ -562,7 +829,7 @@ function BottomNav({ active, onChange, onFAB }) {
     { id: "home", label: "Início", icon: "🏠" },
     { id: "cards", label: "Cartões", icon: "💳" },
     { id: "expenses", label: "Compras", icon: "🛒" },
-    { id: "report", label: "Relatório", icon: "📊" },
+    { id: "financas", label: "Finanças", icon: "💰" },
   ];
   const left = items.slice(0, 2);
   const right = items.slice(2);
@@ -867,6 +1134,141 @@ function CardForm({ onSave, onClose }) {
   );
 }
 
+function ApiKeyModal({ onClose, onSave }) {
+  const [key, setKey] = useState(localStorage.getItem("cp_anthropic_key") || "");
+
+  const save = () => {
+    const k = key.trim();
+    if (!k) return;
+    localStorage.setItem("cp_anthropic_key", k);
+    onSave(k);
+  };
+
+  return (
+    <Modal title="Chave API Anthropic" onClose={onClose}>
+      <div style={s.formBody}>
+        <Field label="Chave API" hint="Salva localmente no seu navegador">
+          <input
+            style={s.input}
+            type="password"
+            placeholder="sk-ant-…"
+            value={key}
+            onChange={(ev) => setKey(ev.target.value)}
+            onKeyDown={(ev) => ev.key === "Enter" && save()}
+          />
+        </Field>
+      </div>
+      <div style={s.formFoot}>
+        <button type="button" style={s.ghostBtn} onClick={onClose}>cancelar</button>
+        <button
+          type="button"
+          style={{ ...s.primaryBtn, opacity: key.trim() ? 1 : 0.5 }}
+          disabled={!key.trim()}
+          onClick={save}
+        >
+          Salvar e escanear
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+function ScanButton({ onScan }) {
+  const [loading, setLoading] = useState(false);
+  const [showApiModal, setShowApiModal] = useState(false);
+  const [pendingBase64, setPendingBase64] = useState(null);
+  const inputRef = useRef(null);
+
+  const doScan = async (base64, key) => {
+    setLoading(true);
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": key,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 256,
+          messages: [{
+            role: "user",
+            content: [
+              {
+                type: "image",
+                source: { type: "base64", media_type: "image/jpeg", data: base64 },
+              },
+              {
+                type: "text",
+                text: 'Extract from this receipt: supplier name, total amount in BRL (number only, no currency symbol), date (ISO YYYY-MM-DD), number of installments (default 1 if not shown). Reply ONLY with valid JSON: {"supplier":"string","total":number,"date":"YYYY-MM-DD","installments":number}',
+              },
+            ],
+          }],
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      const text = data.content?.[0]?.text || "";
+      const match = text.match(/\{[\s\S]*\}/);
+      if (!match) throw new Error("Resposta inválida da API");
+      onScan(JSON.parse(match[0]));
+    } catch (err) {
+      alert("Erro ao escanear: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFile = (file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const base64 = ev.target.result.split(",")[1];
+      const key = localStorage.getItem("cp_anthropic_key");
+      if (!key) {
+        setPendingBase64(base64);
+        setShowApiModal(true);
+        return;
+      }
+      doScan(base64, key);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  return (
+    <>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        style={{ display: "none" }}
+        onChange={(ev) => handleFile(ev.target.files[0])}
+      />
+      <button
+        type="button"
+        style={{ ...s.scanBtn, opacity: loading ? 0.6 : 1 }}
+        disabled={loading}
+        onClick={() => inputRef.current?.click()}
+      >
+        {loading ? "Analisando…" : "📷 Escanear nota"}
+      </button>
+      {showApiModal && (
+        <ApiKeyModal
+          onClose={() => { setShowApiModal(false); setPendingBase64(null); }}
+          onSave={(key) => {
+            setShowApiModal(false);
+            if (pendingBase64) doScan(pendingBase64, key);
+            setPendingBase64(null);
+          }}
+        />
+      )}
+    </>
+  );
+}
+
 function ExpenseForm({ initial, cards, defaultCard, onSave, onClose }) {
   const editing = !!initial.id;
   const [supplier, setSupplier] = useState(initial.supplier || "");
@@ -904,6 +1306,16 @@ function ExpenseForm({ initial, cards, defaultCard, onSave, onClose }) {
   return (
     <Modal title={editing ? "Editar compra" : "Nova compra"} onClose={onClose}>
       <div style={s.formBody}>
+        {!editing && (
+          <ScanButton
+            onScan={({ supplier: sup, total: tot, date: dt, installments: inst }) => {
+              if (sup) setSupplier(sup);
+              if (tot) setTotal(String(tot));
+              if (dt) setDate(dt);
+              if (inst) setInstallments(String(inst));
+            }}
+          />
+        )}
         <Field label="Fornecedor">
           <input
             style={s.input}
@@ -1015,202 +1427,273 @@ function ExpenseForm({ initial, cards, defaultCard, onSave, onClose }) {
   );
 }
 
-/* ------------------------------ report modal ---------------------- */
+/* ------------------------------ financas -------------------------- */
 
-function ReportModal({ expenses, cards, cardById, enrich, onClose }) {
-  const [selCards, setSelCards] = useState([]);
-  const [selMonths, setSelMonths] = useState([]);
-  const [selStatus, setSelStatus] = useState("all");
+function FinancasView({ emprestimos, casa, carro, enrich, onAdd, onEdit, onDelete, setPaid }) {
+  const [subTab, setSubTab] = useState("emprestimos");
 
-  const availableMonths = useMemo(() => {
-    const set = new Set(expenses.map((e) => e.date?.slice(0, 7)).filter(Boolean));
-    return Array.from(set).sort().reverse();
-  }, [expenses]);
+  const lists = { emprestimos, casa, carro };
+  const labels = { emprestimos: "Empréstimos", casa: "Casa", carro: "Carro" };
+  const icons = { emprestimos: "🏦", casa: "🏠", carro: "🚗" };
 
-  const filtered = useMemo(() => {
-    let list = expenses.map(enrich);
-    if (selCards.length) list = list.filter((e) => selCards.includes(e.cardId));
-    if (selMonths.length) list = list.filter((e) => selMonths.some((m) => e.date?.startsWith(m)));
-    if (selStatus === "active") list = list.filter((e) => !e.done);
-    if (selStatus === "done") list = list.filter((e) => e.done);
-    return list.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
-  }, [expenses, selCards, selMonths, selStatus, enrich]);
-
-  const summary = useMemo(() => ({
-    total: filtered.reduce((s, e) => s + e.total, 0),
-    monthly: filtered.filter((e) => !e.done).reduce((s, e) => s + e.monthly, 0),
-    remaining: filtered.filter((e) => !e.done).reduce((s, e) => s + e.remaining, 0),
-    activeCount: filtered.filter((e) => !e.done).length,
-  }), [filtered]);
-
-  const fmtMonth = (ym) => {
-    const [y, m] = ym.split("-");
-    return `${MONTHS_PT[+m - 1]}/${y.slice(2)}`;
-  };
-
-  const toggleCard = (id) =>
-    setSelCards((p) => (p.includes(id) ? p.filter((c) => c !== id) : [...p, id]));
-  const toggleMonth = (m) =>
-    setSelMonths((p) => (p.includes(m) ? p.filter((x) => x !== m) : [...p, m]));
+  const items = lists[subTab].map(enrich);
+  const activeItems = items.filter(e => !e.done);
+  const monthly = activeItems.reduce((s, e) => s + e.monthly, 0);
 
   return (
-    <Modal title="Relatório customizado" onClose={onClose} wide>
-      <div style={{ ...s.formBody, gap: 20 }}>
-
-        {/* Filtros */}
-        <div style={s.repFilters}>
-          {/* Cartão */}
-          <div style={s.repFilterGroup}>
-            <span style={s.fieldLabel}>Cartão</span>
-            <div style={s.repChips}>
-              {cards.map((c) => {
-                const on = selCards.includes(c.id);
-                return (
-                  <button
-                    type="button"
-                    key={c.id}
-                    style={{ ...s.repChip, ...(on ? { background: c.color, color: "#fff", borderColor: c.color } : {}) }}
-                    onClick={() => toggleCard(c.id)}
-                  >
-                    <span style={{ ...s.chipDot, background: on ? "rgba(255,255,255,.65)" : c.color }} />
-                    {c.name}
-                    {c.digits ? ` ···· ${c.digits}` : ""}
-                  </button>
-                );
-              })}
-              {selCards.length > 0 && (
-                <button type="button" style={s.repClear} onClick={() => setSelCards([])}>
-                  × limpar
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Mês */}
-          {availableMonths.length > 0 && (
-            <div style={s.repFilterGroup}>
-              <span style={s.fieldLabel}>Mês de compra</span>
-              <div style={s.repChips}>
-                {availableMonths.map((m) => {
-                  const on = selMonths.includes(m);
-                  return (
-                    <button
-                      type="button"
-                      key={m}
-                      style={{ ...s.repChip, ...(on ? { background: C.primary, color: "#fff", borderColor: C.primary } : {}) }}
-                      onClick={() => toggleMonth(m)}
-                    >
-                      {fmtMonth(m)}
-                    </button>
-                  );
-                })}
-                {selMonths.length > 0 && (
-                  <button type="button" style={s.repClear} onClick={() => setSelMonths([])}>
-                    × limpar
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Status */}
-          <div style={s.repFilterGroup}>
-            <span style={s.fieldLabel}>Status</span>
-            <div style={{ ...s.modeRow, width: "fit-content" }}>
-              {[["all", "Todos"], ["active", "Ativos"], ["done", "Quitados"]].map(([v, l]) => (
-                <button
-                  type="button"
-                  key={v}
-                  style={{ ...s.modeBtn, ...(selStatus === v ? s.modeBtnOn : {}) }}
-                  onClick={() => setSelStatus(v)}
-                >
-                  {l}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Resumo */}
-        <div style={{ ...s.preview, flexWrap: "wrap" }}>
-          {[
-            ["compras", filtered.length, C.ink, false],
-            ["ativas", summary.activeCount, C.primary, false],
-            ["total gasto", summary.total, C.ink, true],
-            ["parc./mês", summary.monthly, C.primary, true],
-            ["a pagar", summary.remaining, C.accent, true],
-          ].map(([lbl, val, color, isBrl], i, arr) => (
-            <React.Fragment key={lbl}>
-              <div style={s.repStat}>
-                <span style={s.previewLabel}>{lbl}</span>
-                <span style={{ ...s.previewBig, fontSize: 17, color }}>
-                  {isBrl ? brl(val) : val}
-                </span>
-              </div>
-              {i < arr.length - 1 && <div style={s.previewDiv} />}
-            </React.Fragment>
+    <div>
+      <div style={s.viewHeader}>
+        <h1 style={s.viewTitle}>Finanças</h1>
+        <button type="button" style={s.headerGhostBtn} onClick={() => onAdd(subTab)}>+ novo</button>
+      </div>
+      <div style={s.viewBody}>
+        {/* sub-tab bar */}
+        <div style={s.finSubTabs}>
+          {["emprestimos","casa","carro"].map(key => (
+            <button
+              key={key}
+              type="button"
+              style={{ ...s.finSubTab, ...(subTab === key ? s.finSubTabOn : {}) }}
+              onClick={() => setSubTab(key)}
+            >
+              {icons[key]} {labels[key]}
+            </button>
           ))}
         </div>
 
-        {/* Tabela */}
-        {filtered.length === 0 ? (
-          <p style={{ color: C.muted, textAlign: "center", padding: "16px 0", margin: 0, fontFamily: FONTS.mono, fontSize: 13 }}>
-            Nenhuma compra para os filtros selecionados.
-          </p>
+        {/* monthly summary */}
+        {activeItems.length > 0 && (
+          <div style={{ ...s.homeCard, marginBottom: 14 }}>
+            <div style={s.homeCardTitle}>{labels[subTab]} — compromisso mensal</div>
+            <div style={s.homeBigValue}>{brl(monthly)}</div>
+            <div style={s.homeBigLabel}>{activeItems.length} ativ{activeItems.length === 1 ? "o" : "os"}</div>
+          </div>
+        )}
+
+        {/* list */}
+        {items.length === 0 ? (
+          <Empty
+            text={`Nenhum registro em ${labels[subTab]} ainda.`}
+            cta="+ Adicionar"
+            onClick={() => onAdd(subTab)}
+          />
         ) : (
-          <div style={s.repTableWrap}>
-            <table style={s.repTable}>
-              <thead>
-                <tr>
-                  {["Fornecedor", "Cartão", "Data", "Total", "Parc./mês", "Pagas", "A pagar", "Status"].map((h) => (
-                    <th key={h} style={s.repTh}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((e) => {
-                  const card = cardById[e.cardId];
-                  return (
-                    <tr key={e.id} style={{ opacity: e.done ? 0.65 : 1 }}>
-                      <td style={s.repTd}>{e.supplier}</td>
-                      <td style={s.repTd}>
-                        <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <span style={{ ...s.chipDot, width: 8, height: 8, background: card?.color || C.muted }} />
-                          {card?.name || "—"}
-                        </span>
-                      </td>
-                      <td style={{ ...s.repTd, ...s.repMono }}>{formatDate(e.date)}</td>
-                      <td style={{ ...s.repTd, ...s.repMono, textAlign: "right" }}>{brl(e.total)}</td>
-                      <td style={{ ...s.repTd, ...s.repMono, textAlign: "right" }}>{brl(e.monthly)}</td>
-                      <td style={{ ...s.repTd, ...s.repMono, textAlign: "center" }}>
-                        {e.paidInstallments}/{e.totalInstallments}
-                      </td>
-                      <td style={{ ...s.repTd, ...s.repMono, textAlign: "right", color: e.done ? C.muted : C.accent }}>
-                        {e.done ? "—" : brl(e.remaining)}
-                      </td>
-                      <td style={s.repTd}>
-                        <span style={{
-                          ...s.doneTag,
-                          color: e.done ? C.primary : C.accent,
-                          background: e.done ? "#f0faf5" : C.accentSoft,
-                          border: `1px solid ${e.done ? "#c3e8d8" : C.accent + "44"}`,
-                        }}>
-                          {e.done ? "quitado" : "ativo"}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div style={s.list}>
+            {items.sort((a,b) => a.done - b.done || (b.date||"").localeCompare(a.date||"")).map(e => (
+              <FinancaRow
+                key={e.id}
+                e={e}
+                onPay={() => setPaid(subTab, e.id, e.paidInstallments + 1)}
+                onUnpay={() => setPaid(subTab, e.id, e.paidInstallments - 1)}
+                onEdit={() => onEdit(subTab, e)}
+                onDelete={() => onDelete(subTab, e.id)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function FinancaRow({ e, onPay, onUnpay, onEdit, onDelete }) {
+  const color = C.primary;
+  return (
+    <div style={{ ...s.row, opacity: e.done ? 0.72 : 1 }} className="cp-row">
+      <div style={s.rowMain}>
+        <div style={s.rowTop}>
+          <span style={s.supplier}>{e.supplier}</span>
+          {e.done && <span style={s.doneTag}>quitado</span>}
+        </div>
+        <div style={s.rowMeta}>
+          <span>{brl(e.monthly)} × {e.totalInstallments}</span>
+          {e.date && (
+            <>
+              <span style={s.metaSep}>·</span>
+              <span>{formatDate(e.date)}</span>
+            </>
+          )}
+        </div>
+        <Pips total={e.totalInstallments} paid={e.paidInstallments} color={color} />
+        <div style={s.progressText}>
+          <span style={{ color, fontFamily: FONTS.mono, fontWeight: 700 }}>
+            {e.paidInstallments}/{e.totalInstallments}
+          </span>
+          <span style={s.progressMuted}>parcelas pagas</span>
+          {!e.done && (
+            <span style={s.remainingChip}>
+              faltam {brl(e.remaining)}
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div style={s.rowSide} className="cp-rowside">
+        <div style={s.rowTotal}>
+          <span style={s.totalLabel}>total</span>
+          <span style={s.totalValue}>{brl(e.total)}</span>
+        </div>
+        <div style={s.rowBtns}>
+          {!e.done && (
+            <button style={s.payBtn} onClick={onPay}>
+              registrar parcela
+            </button>
+          )}
+          {e.paidInstallments > 0 && (
+            <button style={s.iconBtn} title="Desfazer última parcela" onClick={onUnpay}>
+              ↩
+            </button>
+          )}
+          <button style={s.iconBtn} title="Editar" onClick={onEdit}>
+            ✎
+          </button>
+          <button style={{ ...s.iconBtn, color: C.accent }} title="Excluir" onClick={onDelete}>
+            ✕
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FinancaForm({ category, initial, onSave, onClose }) {
+  const editing = !!initial.id;
+  const categoryLabel = { emprestimos: "Empréstimo", casa: "Despesa de Casa", carro: "Despesa de Carro" };
+  const placeholders = {
+    emprestimos: "Ex.: Banco Itaú, Nubank, Consignado…",
+    casa: "Ex.: Aluguel, Água, Energia, Internet…",
+    carro: "Ex.: Seguro Auto, IPVA, Financiamento…",
+  };
+
+  const [supplier, setSupplier] = useState(initial.supplier || "");
+  const [total, setTotal] = useState(initial.total != null ? String(initial.total) : "");
+  const [installments, setInstallments] = useState(
+    initial.totalInstallments != null ? String(initial.totalInstallments) : "1"
+  );
+  const [paid, setPaid] = useState(
+    initial.paidInstallments != null ? String(initial.paidInstallments) : "0"
+  );
+  const [mode, setMode] = useState("total");
+  const [date, setDate] = useState(initial.date || todayISO());
+
+  const totalNum = parseMoney(total);
+  const instNum = Math.max(1, parseInt(installments, 10) || 1);
+  const paidNum = Math.min(instNum, Math.max(0, parseInt(paid, 10) || 0));
+  const effectiveTotal = mode === "total" ? totalNum : totalNum * instNum;
+  const monthly = effectiveTotal / instNum;
+  const valid = supplier.trim() && effectiveTotal > 0;
+
+  const submit = () => {
+    if (!valid) return;
+    onSave({
+      id: initial.id,
+      supplier: supplier.trim(),
+      cardId: null,
+      total: round2(effectiveTotal),
+      totalInstallments: instNum,
+      paidInstallments: paidNum,
+      date,
+    });
+  };
+
+  return (
+    <Modal title={editing ? `Editar ${categoryLabel[category]}` : `Novo ${categoryLabel[category]}`} onClose={onClose}>
+      <div style={s.formBody}>
+        <Field label="Descrição / Credor">
+          <input
+            style={s.input}
+            autoFocus
+            value={supplier}
+            placeholder={placeholders[category]}
+            onChange={(ev) => setSupplier(ev.target.value)}
+          />
+        </Field>
+
+        <div style={s.modeRow}>
+          <button
+            type="button"
+            style={{ ...s.modeBtn, ...(mode === "total" ? s.modeBtnOn : {}) }}
+            onClick={() => setMode("total")}
+          >
+            valor total
+          </button>
+          <button
+            type="button"
+            style={{ ...s.modeBtn, ...(mode === "monthly" ? s.modeBtnOn : {}) }}
+            onClick={() => setMode("monthly")}
+          >
+            valor da parcela
+          </button>
+        </div>
+
+        <div style={s.grid2}>
+          <Field label={mode === "total" ? "Valor total (R$)" : "Valor por parcela (R$)"}>
+            <input
+              style={s.input}
+              inputMode="decimal"
+              value={total}
+              placeholder="0,00"
+              onChange={(ev) => setTotal(ev.target.value)}
+            />
+          </Field>
+          <Field label="Quantidade de parcelas">
+            <input
+              style={s.input}
+              inputMode="numeric"
+              value={installments}
+              onChange={(ev) => setInstallments(ev.target.value.replace(/\D/g, ""))}
+            />
+          </Field>
+        </div>
+
+        <div style={s.grid2}>
+          <Field label="Parcelas já pagas" hint={`de ${instNum}`}>
+            <input
+              style={s.input}
+              inputMode="numeric"
+              value={paid}
+              onChange={(ev) => setPaid(ev.target.value.replace(/\D/g, ""))}
+            />
+          </Field>
+          <Field label="Data">
+            <input
+              style={s.input}
+              type="date"
+              value={date}
+              onChange={(ev) => setDate(ev.target.value)}
+            />
+          </Field>
+        </div>
+
+        {effectiveTotal > 0 && (
+          <div style={s.preview}>
+            <div>
+              <span style={s.previewLabel}>parcela</span>
+              <span style={s.previewBig}>{brl(monthly)}</span>
+            </div>
+            <div style={s.previewDiv} />
+            <div>
+              <span style={s.previewLabel}>total</span>
+              <span style={s.previewVal}>{brl(effectiveTotal)}</span>
+            </div>
+            <div style={s.previewDiv} />
+            <div>
+              <span style={s.previewLabel}>restante</span>
+              <span style={s.previewVal}>{brl(monthly * (instNum - paidNum))}</span>
+            </div>
           </div>
         )}
       </div>
 
       <div style={s.formFoot}>
-        <button type="button" style={s.ghostBtn} onClick={onClose}>fechar</button>
-        <button type="button" style={s.primaryBtn} onClick={() => window.print()}>
-          ⬇ imprimir / salvar PDF
+        <button type="button" style={s.ghostBtn} onClick={onClose}>cancelar</button>
+        <button
+          type="button"
+          style={{ ...s.primaryBtn, opacity: valid ? 1 : 0.5 }}
+          disabled={!valid}
+          onClick={submit}
+        >
+          {editing ? "Salvar alterações" : "Lançar"}
         </button>
       </div>
     </Modal>
@@ -1240,23 +1723,23 @@ function round2(n) {
 
 const css = `
   * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { background: ${C.bg}; }
+  .cp-root { width: 100%; max-width: 680px; margin: 0 auto; }
   .cp-root input, .cp-root select, .cp-root button { font-family: inherit; }
-  input:focus, select:focus { border-color: ${C.primary} !important; }
+  input:focus, select:focus { border-color: ${C.primary} !important; outline: none; }
   button { transition: transform .08s ease, opacity .15s ease, background .15s ease; }
   button:active:not(:disabled) { transform: translateY(1px); }
-  @media (max-width: 640px) {
-    .cp-header { flex-direction: column; align-items: flex-start; gap: 14px; }
-    .cp-strip { grid-template-columns: 1fr !important; }
+  ::-webkit-scrollbar { height: 4px; width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: ${C.line}; border-radius: 4px; }
+  @media (max-width: 480px) {
     .cp-row { flex-direction: column; }
     .cp-rowside { width: 100%; align-items: stretch !important; border-left: none !important; border-top: 1px solid ${C.line}; padding: 14px 0 0 0 !important; margin-top: 14px; }
   }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
   @media print {
-    body > *:not(.cp-root) { display: none !important; }
-    .cp-root > *:not([data-print]) { display: none !important; }
-    [data-print] { display: block !important; }
-    [data-print] button { display: none !important; }
-    [data-print-hide] { display: none !important; }
+    .cp-root nav { display: none !important; }
   }
 `;
 
@@ -1266,125 +1749,7 @@ const s = {
     background: C.bg,
     color: C.ink,
     minHeight: "100vh",
-    maxWidth: 680,
-    margin: "0 auto",
     paddingBottom: 80,
-  },
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
-    paddingBottom: 22,
-    borderBottom: `2px solid ${C.ink}`,
-  },
-  kicker: {
-    fontFamily: FONTS.mono,
-    fontSize: 11,
-    letterSpacing: 3,
-    textTransform: "uppercase",
-    color: C.primary,
-    marginBottom: 6,
-  },
-  title: {
-    fontFamily: FONTS.display,
-    fontSize: "clamp(26px, 5vw, 40px)",
-    fontWeight: 700,
-    letterSpacing: "-0.02em",
-    margin: 0,
-    lineHeight: 1.02,
-  },
-  headerNumbers: { textAlign: "right" },
-  bigStat: { display: "flex", flexDirection: "column", alignItems: "flex-end" },
-  bigStatLabel: {
-    fontFamily: FONTS.mono,
-    fontSize: 10,
-    letterSpacing: 2,
-    textTransform: "uppercase",
-    color: C.muted,
-  },
-  bigStatValue: {
-    fontFamily: FONTS.display,
-    fontSize: "clamp(22px, 4vw, 30px)",
-    fontWeight: 700,
-    color: C.primary,
-  },
-
-  strip: {
-    display: "grid",
-    gridTemplateColumns: "repeat(3, 1fr)",
-    gap: 14,
-    margin: "22px 0 8px",
-  },
-  statCell: {
-    background: C.surface,
-    border: `1px solid ${C.line}`,
-    borderRadius: 14,
-    padding: "16px 18px",
-    display: "flex",
-    flexDirection: "column",
-    gap: 6,
-  },
-  statLabel: {
-    fontFamily: FONTS.mono,
-    fontSize: 10,
-    letterSpacing: 1.5,
-    textTransform: "uppercase",
-    color: C.muted,
-  },
-  statValue: { fontSize: 24, fontWeight: 700, letterSpacing: "-0.01em" },
-
-  section: { marginTop: 30 },
-  sectionHead: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 14,
-  },
-  h2: {
-    fontFamily: FONTS.display,
-    fontSize: 18,
-    fontWeight: 600,
-    margin: 0,
-    letterSpacing: "-0.01em",
-  },
-
-  cardRow: {
-    display: "flex",
-    gap: 12,
-    overflowX: "auto",
-    paddingBottom: 6,
-  },
-  chip: {
-    position: "relative",
-    flex: "0 0 auto",
-    minWidth: 150,
-    background: C.surface,
-    border: `1px solid ${C.line}`,
-    borderRadius: 14,
-    padding: "14px 16px",
-    cursor: "pointer",
-    textAlign: "left",
-    display: "flex",
-    flexDirection: "column",
-    gap: 4,
-  },
-  chipDot: { width: 10, height: 10, borderRadius: "50%", marginBottom: 2 },
-  chipName: { fontFamily: FONTS.display, fontWeight: 600, fontSize: 15, color: C.ink },
-  chipSub: { fontFamily: FONTS.mono, fontSize: 11, color: C.muted },
-  chipMoney: { fontFamily: FONTS.mono, fontSize: 13, fontWeight: 700, marginTop: 4 },
-  chipX: {
-    position: "absolute",
-    top: -6,
-    right: -6,
-    width: 22,
-    height: 22,
-    borderRadius: "50%",
-    border: `1px solid ${C.line}`,
-    background: C.surface,
-    color: C.muted,
-    cursor: "pointer",
-    fontSize: 14,
-    lineHeight: 1,
   },
 
   list: { display: "flex", flexDirection: "column", gap: 12 },
@@ -1393,8 +1758,8 @@ const s = {
     background: C.surface,
     border: `1px solid ${C.line}`,
     borderRadius: 16,
-    padding: 18,
-    gap: 18,
+    padding: "clamp(12px, 3vw, 18px)",
+    gap: "clamp(10px, 3vw, 18px)",
   },
   rowMain: { flex: 1, minWidth: 0 },
   rowTop: { display: "flex", alignItems: "center", gap: 9, marginBottom: 6 },
@@ -1406,13 +1771,14 @@ const s = {
     letterSpacing: "-0.01em",
   },
   doneTag: {
-    fontFamily: FONTS.mono,
+    fontFamily: FONTS.body,
     fontSize: 10,
+    fontWeight: 700,
     textTransform: "uppercase",
-    letterSpacing: 1,
-    background: C.surfaceAlt,
+    letterSpacing: 0.8,
+    background: "#EDE9FE",
     color: C.primary,
-    border: `1px solid ${C.line}`,
+    border: `1px solid #C4B5FD`,
     borderRadius: 20,
     padding: "2px 8px",
   },
@@ -1496,7 +1862,7 @@ const s = {
   },
 
   primaryBtn: {
-    background: C.ink,
+    background: C.primary,
     color: "#fff",
     border: "none",
     borderRadius: 11,
@@ -1508,8 +1874,8 @@ const s = {
   },
   ghostBtn: {
     background: "transparent",
-    color: C.inkSoft,
-    border: `1px solid ${C.line}`,
+    color: C.primary,
+    border: `1.5px solid ${C.primary}`,
     borderRadius: 11,
     padding: "10px 16px",
     fontSize: 13,
@@ -1531,19 +1897,11 @@ const s = {
   },
   emptyText: { color: C.muted, fontSize: 14, maxWidth: 420, margin: 0, lineHeight: 1.5 },
 
-  footer: {
-    marginTop: 40,
-    fontFamily: FONTS.mono,
-    fontSize: 11,
-    color: C.muted,
-    textAlign: "center",
-  },
-
   /* modal */
   overlay: {
     position: "fixed",
     inset: 0,
-    background: "rgba(22,35,29,0.45)",
+    background: "rgba(26,18,51,0.5)",
     backdropFilter: "blur(2px)",
     display: "flex",
     alignItems: "flex-start",
@@ -1557,15 +1915,20 @@ const s = {
     borderRadius: 18,
     width: "100%",
     maxWidth: 460,
+    maxHeight: "calc(100svh - 40px)",
+    overflowY: "auto",
     boxShadow: "0 24px 60px rgba(0,0,0,.22)",
-    overflow: "hidden",
   },
   modalHead: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    padding: "18px 22px",
+    padding: "clamp(14px,3vw,18px) clamp(16px,4vw,22px)",
     borderBottom: `1px solid ${C.line}`,
+    position: "sticky",
+    top: 0,
+    background: C.surface,
+    zIndex: 1,
   },
   modalTitle: { fontFamily: FONTS.display, fontSize: 18, fontWeight: 600, margin: 0 },
   modalX: {
@@ -1576,7 +1939,7 @@ const s = {
     color: C.muted,
     cursor: "pointer",
   },
-  formBody: { padding: 22, display: "flex", flexDirection: "column", gap: 16 },
+  formBody: { padding: "clamp(14px, 4vw, 22px)", display: "flex", flexDirection: "column", gap: "clamp(12px, 2vw, 16px)" },
   formFoot: {
     display: "flex",
     justifyContent: "flex-end",
@@ -1654,19 +2017,7 @@ const s = {
   repFilters: { display: "flex", flexDirection: "column", gap: 14 },
   repFilterGroup: { display: "flex", flexDirection: "column", gap: 8 },
   repChips: { display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" },
-  repChip: {
-    display: "flex", alignItems: "center", gap: 6,
-    border: `1px solid ${C.line}`, borderRadius: 20,
-    padding: "6px 12px", fontSize: 13, fontWeight: 600,
-    background: C.surface, color: C.inkSoft, cursor: "pointer",
-    fontFamily: FONTS.body,
-  },
-  repClear: {
-    border: "none", background: "transparent",
-    color: C.muted, fontSize: 12, cursor: "pointer",
-    fontFamily: FONTS.mono, padding: "4px 6px",
-  },
-  repStat: { display: "flex", flexDirection: "column", gap: 4 },
+
   repTableWrap: { overflowX: "auto", borderRadius: 10, border: `1px solid ${C.line}` },
   repTable: { width: "100%", borderCollapse: "collapse", fontSize: 13 },
   repTh: {
@@ -1743,7 +2094,7 @@ const s = {
   /* home view */
   homeHeader: {
     background: `linear-gradient(135deg, ${C.primary} 0%, ${C.primaryDark} 100%)`,
-    padding: "36px 20px 28px",
+    padding: "clamp(22px,6vw,36px) clamp(14px,4vw,20px) clamp(18px,4vw,28px)",
     color: "#fff",
   },
   homeHeaderKicker: {
@@ -1756,7 +2107,7 @@ const s = {
   },
   homeHeaderTitle: {
     fontFamily: FONTS.display,
-    fontSize: 26,
+    fontSize: "clamp(20px, 5vw, 26px)",
     fontWeight: 700,
     margin: 0,
     marginBottom: 4,
@@ -1779,7 +2130,7 @@ const s = {
   },
   homeBigValue: {
     fontFamily: FONTS.display,
-    fontSize: 34,
+    fontSize: "clamp(26px, 6vw, 34px)",
     fontWeight: 700,
     color: C.primary,
     letterSpacing: "-0.02em",
@@ -1810,17 +2161,17 @@ const s = {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: "24px 20px 12px",
+    padding: "clamp(16px,4vw,24px) clamp(14px,4vw,20px) clamp(8px,2vw,12px)",
   },
   viewTitle: {
     fontFamily: FONTS.display,
-    fontSize: 22,
+    fontSize: "clamp(18px, 4vw, 22px)",
     fontWeight: 700,
     margin: 0,
     color: C.ink,
     letterSpacing: "-0.01em",
   },
-  viewBody: { padding: "8px 16px 0" },
+  viewBody: { padding: "8px clamp(12px,4vw,20px) 0" },
   headerGhostBtn: {
     background: "transparent",
     color: C.primary,
@@ -1902,4 +2253,70 @@ const s = {
     fontFamily: FONTS.body,
   },
   statusBtnOn: { background: C.surface, color: C.ink, boxShadow: "0 1px 4px rgba(0,0,0,.08)" },
+
+  /* report view */
+  repSection: { marginBottom: 14 },
+  repSectionLabel: { fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 },
+  repSummary: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 10,
+    background: C.surface,
+    borderRadius: 14,
+    padding: "14px 16px",
+    marginBottom: 14,
+    boxShadow: "0 2px 8px rgba(124,58,237,0.06)",
+  },
+  repSumCell: { flex: 1, minWidth: 80, display: "flex", flexDirection: "column", gap: 3 },
+  repSumLabel: { fontSize: 10, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: 0.8 },
+  repSumVal: { fontSize: 15, fontWeight: 700, fontFamily: FONTS.display },
+  repClear: {
+    border: "none", background: "transparent",
+    color: C.muted, fontSize: 12, cursor: "pointer",
+    fontFamily: FONTS.body, padding: "4px 6px", flex: "0 0 auto",
+  },
+
+  /* scan button */
+  scanBtn: {
+    background: C.surfaceAlt,
+    border: `2px dashed ${C.line}`,
+    color: C.primary,
+    fontWeight: 600,
+    width: "100%",
+    padding: "12px",
+    borderRadius: 12,
+    fontSize: 14,
+    cursor: "pointer",
+    fontFamily: FONTS.body,
+    marginBottom: 16,
+  },
+
+  /* financas view */
+  finSubTabs: {
+    display: "flex",
+    gap: 8,
+    marginBottom: 16,
+    background: C.surfaceAlt,
+    borderRadius: 14,
+    padding: 4,
+  },
+  finSubTab: {
+    flex: 1,
+    border: "none",
+    borderRadius: 10,
+    padding: "9px 6px",
+    fontSize: 12,
+    fontWeight: 600,
+    color: C.muted,
+    cursor: "pointer",
+    fontFamily: FONTS.body,
+    background: "transparent",
+    whiteSpace: "nowrap",
+  },
+  finSubTabOn: {
+    background: C.surface,
+    color: C.primary,
+    boxShadow: "0 1px 4px rgba(0,0,0,.08)",
+  },
 };
