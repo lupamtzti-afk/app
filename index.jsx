@@ -468,28 +468,11 @@ export default function App() {
   return (
     <div style={s.root} className="cp-root">
       <style>{css}</style>
-      <div style={{ position: "fixed", top: 10, right: 12, zIndex: 200 }}>
-        <button
-          type="button"
-          onClick={() => supabase.auth.signOut()}
-          style={{
-            background: "rgba(124,58,237,0.12)", border: "none", borderRadius: 20,
-            padding: "5px 12px", fontSize: 11, fontWeight: 600, color: "#7C3AED",
-            cursor: "pointer", fontFamily: "'Poppins', sans-serif",
-          }}
-        >
-          Sair
-        </button>
-      </div>
 
       {activeTab === "home" && (
         <HomeView
-          cards={cards}
-          expenses={expenses}
-          enrich={enrich}
-          totals={totals}
-          cardTotals={cardTotals}
-          cardById={cardById}
+          session={session}
+          onNavigate={setActiveTab}
           onReport={() => setActiveTab("report")}
         />
       )}
@@ -619,115 +602,74 @@ function DonutChart({ segments, centerLabel }) {
   );
 }
 
-function HomeView({ cards, expenses, enrich, totals, cardTotals, cardById, onReport }) {
-  const now = new Date();
-  const monthName = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho",
-    "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"][now.getMonth()];
-  const year = now.getFullYear();
+function HomeView({ session, onNavigate, onReport }) {
+  const F = "'Poppins', sans-serif";
+  const rawName = session?.user?.user_metadata?.full_name
+    || session?.user?.email?.split("@")[0]
+    || "Usuário";
+  const firstName = rawName.split(" ")[0];
 
-  const donutSegments = cards
-    .filter((c) => cardTotals[c.id] > 0)
-    .map((c) => ({ label: c.name, value: cardTotals[c.id], color: c.color }));
-
-  const recentExpenses = expenses
-    .map(enrich)
-    .filter((e) => !e.done)
-    .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
-    .slice(0, 5);
+  const menuItems = [
+    { tab: "home",     emoji: "🏠", title: "Início",   desc: "Resumo das suas finanças",                    iconBg: "#EDE9FE", color: "#7C3AED" },
+    { tab: "cards",    emoji: "💳", title: "Cartões",  desc: "Gerencie seus cartões e faturas",              iconBg: "#D1FAE5", color: "#059669" },
+    { tab: "expenses", emoji: "🛒", title: "Compras",  desc: "Acompanhe suas compras e parcelas",            iconBg: "#DBEAFE", color: "#2563EB" },
+    { tab: "financas", emoji: "💰", title: "Finanças", desc: "Veja seus compromissos e controle financeiro", iconBg: "#FEF3C7", color: "#D97706" },
+  ];
 
   return (
-    <div>
-      {/* purple gradient header */}
-      <div style={s.homeHeader}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-          <div>
-            <div style={s.homeHeaderKicker}>smartfin+</div>
-            <h1 style={s.homeHeaderTitle}>SmartFin+</h1>
-            <div style={s.homeHeaderSub}>{monthName} {year}</div>
+    <div style={{ background: "#F8F6FF", minHeight: "100vh", paddingBottom: 90 }}>
+      {/* top bar */}
+      <div style={{ padding: "52px 20px 14px", background: "#fff", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #f3f0ff" }}>
+        <span style={{ fontFamily: F, fontWeight: 800, fontSize: 22, color: "#1a1233" }}>
+          SmartFin<span style={{ color: "#7C3AED" }}>+</span>
+        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <button type="button" onClick={onReport}
+            style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff", border: "1.5px solid #e5e7eb", borderRadius: 20, padding: "7px 14px", cursor: "pointer", fontFamily: F, fontSize: 13, fontWeight: 600, color: "#374151" }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="2.2">
+              <rect x="18" y="3" width="4" height="18" rx="1"/><rect x="10" y="8" width="4" height="13" rx="1"/><rect x="2" y="13" width="4" height="8" rx="1"/>
+            </svg>
+            Relatórios
+          </button>
+          <div style={{ position: "relative" }}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="2">
+              <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>
+            </svg>
+            <span style={{ position: "absolute", top: -2, right: -2, width: 8, height: 8, borderRadius: "50%", background: "#7C3AED", border: "2px solid #fff" }} />
           </div>
-          <button
-            type="button"
-            style={{ ...s.headerGhostBtn, color: "#fff", borderColor: "rgba(255,255,255,0.6)", marginTop: 4 }}
-            onClick={onReport}
-          >
-            📊 Relatório
+          <button type="button" onClick={() => supabase.auth.signOut()}
+            title="Sair"
+            style={{ width: 34, height: 34, borderRadius: "50%", background: "#EDE9FE", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" strokeWidth="2">
+              <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+            </svg>
           </button>
         </div>
       </div>
 
-      <div style={s.homeBody}>
-        {/* summary card */}
-        <div style={s.homeCard}>
-          <div style={s.homeBigValue}>{brl(totals.monthly)}</div>
-          <div style={s.homeBigLabel}>compromisso mensal</div>
-          <div style={s.homeStatRow}>
-            <div style={s.homeStat}>
-              <span style={s.homeStatVal}>{brl(totals.remaining)}</span>
-              <span style={s.homeStatLbl}>a pagar no total</span>
-            </div>
-            <div style={s.homeStatDiv} />
-            <div style={s.homeStat}>
-              <span style={s.homeStatVal}>{totals.activeCount}</span>
-              <span style={s.homeStatLbl}>compras ativas</span>
-            </div>
-          </div>
-        </div>
+      {/* greeting */}
+      <div style={{ padding: "24px 20px 10px" }}>
+        <h2 style={{ fontFamily: F, fontWeight: 700, fontSize: 22, margin: "0 0 4px", color: "#1a1233" }}>
+          Olá, {firstName}!
+        </h2>
+        <p style={{ fontFamily: F, fontSize: 13, color: "#6b7280", margin: 0 }}>
+          Acesse rapidamente o que você precisa
+        </p>
+      </div>
 
-        {/* chart card */}
-        {cards.length > 0 && (
-          <div style={s.homeCard}>
-            <div style={s.homeCardTitle}>Por cartão</div>
-            <div style={s.chartArea}>
-              <DonutChart segments={donutSegments} centerLabel={brl(totals.monthly)} />
-              <div style={s.chartLegend}>
-                {cards.map((c) => {
-                  const val = cardTotals[c.id] || 0;
-                  const pct = totals.monthly > 0 ? Math.round((val / totals.monthly) * 100) : 0;
-                  return (
-                    <div key={c.id} style={s.legendRow}>
-                      <span style={{ ...s.legendDot, background: c.color }} />
-                      <span style={s.legendName}>{c.name}</span>
-                      <span style={s.legendAmt}>{brl(val)}</span>
-                      <span style={s.legendPct}>{pct}%</span>
-                    </div>
-                  );
-                })}
-              </div>
+      {/* 2×2 grid */}
+      <div style={{ padding: "4px 16px 0", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        {menuItems.map((item) => (
+          <button key={item.tab} type="button"
+            onClick={() => onNavigate(item.tab)}
+            style={{ background: "#fff", borderRadius: 18, padding: "22px 14px 18px", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", boxShadow: "0 2px 14px rgba(0,0,0,.06)" }}>
+            <div style={{ width: 66, height: 66, borderRadius: "50%", background: item.iconBg, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12, fontSize: 32 }}>
+              {item.emoji}
             </div>
-          </div>
-        )}
-
-        {/* recents card */}
-        {recentExpenses.length > 0 && (
-          <div style={s.homeCard}>
-            <div style={s.homeCardTitle}>Compras recentes</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {recentExpenses.map((e) => {
-                const card = cardById[e.cardId];
-                return (
-                  <div key={e.id} style={s.recentRow}>
-                    <span style={{ ...s.recentDot, background: card?.color || C.muted }} />
-                    <div style={s.recentInfo}>
-                      <span style={s.recentName}>{e.supplier}</span>
-                      <span style={s.recentMeta}>
-                        {card?.name || "sem cartão"} · {e.paidInstallments}/{e.totalInstallments} parcelas
-                      </span>
-                    </div>
-                    <span style={s.recentAmt}>{brl(e.monthly)}/mês</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {cards.length === 0 && (
-          <div style={s.homeCard}>
-            <p style={{ color: C.muted, textAlign: "center", margin: 0, lineHeight: 1.6 }}>
-              Cadastre um cartão e lance suas compras para ver o resumo aqui.
-            </p>
-          </div>
-        )}
+            <div style={{ fontFamily: F, fontWeight: 700, fontSize: 15, color: item.color, marginBottom: 6 }}>{item.title}</div>
+            <div style={{ fontFamily: F, fontSize: 12, color: "#6b7280", lineHeight: 1.45, textAlign: "center" }}>{item.desc}</div>
+          </button>
+        ))}
       </div>
     </div>
   );
