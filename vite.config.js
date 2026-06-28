@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
-  base: '/app/',
+  base: '/Gestao_de_Pagamentos/',
   plugins: [
     react(),
     VitePWA({
@@ -17,8 +17,8 @@ export default defineConfig({
         background_color: '#F5F3FF',
         display: 'standalone',
         orientation: 'portrait-primary',
-        start_url: '/app/',
-        scope: '/app/',
+        start_url: '/Gestao_de_Pagamentos/',
+        scope: '/Gestao_de_Pagamentos/',
         lang: 'pt-BR',
         icons: [
           {
