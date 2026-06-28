@@ -62,85 +62,191 @@ const fromFinanca = (row) => ({
 /* ------------------------------ login ----------------------------- */
 
 function LoginScreen() {
-  const [mode, setMode] = useState("login"); // "login" | "signup"
+  const [mode, setMode] = useState("login"); // "login" | "signup" | "reset"
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [remember, setRemember] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
+  useEffect(() => {
+    const saved = localStorage.getItem("gp_remember_email");
+    if (saved) { setEmail(saved); setRemember(true); }
+  }, []);
+
   const submit = async () => {
+    if (!email.trim()) { setError("Digite seu e-mail."); return; }
     setLoading(true); setError(""); setSuccess("");
-    const fn = mode === "login" ? supabase.auth.signInWithPassword : supabase.auth.signUp;
-    const { error: err } = await fn.call(supabase.auth, { email: email.trim(), password });
+
+    if (mode === "reset") {
+      const { error: err } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo: window.location.href,
+      });
+      setLoading(false);
+      if (err) setError(err.message);
+      else setSuccess("E-mail de recuperação enviado! Verifique sua caixa de entrada.");
+      return;
+    }
+
+    if (!password) { setLoading(false); setError("Digite sua senha."); return; }
+    const { error: err } = await (mode === "login"
+      ? supabase.auth.signInWithPassword({ email: email.trim(), password })
+      : supabase.auth.signUp({ email: email.trim(), password }));
     setLoading(false);
     if (err) { setError(err.message); return; }
+    if (remember) localStorage.setItem("gp_remember_email", email.trim());
+    else localStorage.removeItem("gp_remember_email");
     if (mode === "signup") setSuccess("Conta criada! Verifique seu e-mail para confirmar.");
   };
 
+  const tryBiometric = async () => {
+    setError(""); setSuccess("");
+    if (!window.PublicKeyCredential) {
+      setError("Biometria não suportada neste dispositivo.");
+      return;
+    }
+    try {
+      const available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+      if (!available) { setError("Nenhum autenticador biométrico encontrado."); return; }
+      setError("Faça login com e-mail e senha uma vez para habilitar a biometria.");
+    } catch { setError("Biometria indisponível. Use e-mail e senha."); }
+  };
+
+  const F = "'Poppins', sans-serif";
+  const inputBase = {
+    width: "100%", border: "1.5px solid #e8e4f3", borderRadius: 14,
+    padding: "14px 14px 14px 44px", fontSize: 14, fontFamily: F,
+    outline: "none", background: "#F7F5FF", color: "#1a1233", boxSizing: "border-box",
+  };
+
+  const switchMode = (m) => { setMode(m); setError(""); setSuccess(""); };
+
   return (
     <div style={{
-      minHeight: "100vh", background: `linear-gradient(135deg, #7C3AED 0%, #5B21B6 100%)`,
-      display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+      minHeight: "100vh", background: "linear-gradient(160deg, #8B5CF6 0%, #6D28D9 45%, #5B21B6 100%)",
+      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+      padding: "20px 20px 40px", position: "relative", overflow: "hidden",
     }}>
+      {/* decorative circles */}
+      <div style={{ position: "absolute", top: -80, right: -80, width: 260, height: 260, borderRadius: "50%", background: "rgba(255,255,255,.08)", pointerEvents: "none" }} />
+      <div style={{ position: "absolute", top: 60, right: -40, width: 140, height: 140, borderRadius: "50%", background: "rgba(255,255,255,.06)", pointerEvents: "none" }} />
+
+      {/* logo + title */}
+      <div style={{ textAlign: "center", marginBottom: 28, zIndex: 1 }}>
+        <div style={{
+          width: 80, height: 80, borderRadius: 22, background: "linear-gradient(135deg, #7C3AED, #4C1D95)",
+          display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px",
+          boxShadow: "0 8px 32px rgba(0,0,0,.3)",
+        }}>
+          <span style={{ fontSize: 36 }}>💳</span>
+        </div>
+        <h1 style={{ fontFamily: F, fontSize: 26, fontWeight: 800, margin: 0, color: "#fff", letterSpacing: -0.5 }}>
+          {mode === "signup" ? "Criar Conta" : mode === "reset" ? "Recuperar Senha" : <>Gestão <span style={{ color: "#C4B5FD" }}>Finance</span></>}
+        </h1>
+        <p style={{ color: "rgba(255,255,255,.75)", fontSize: 13, margin: "6px 0 0", fontFamily: F }}>
+          {mode === "signup" ? "Preencha os dados para começar" : mode === "reset" ? "Enviaremos um link ao seu e-mail" : "Controle suas finanças com inteligência."}
+        </p>
+      </div>
+
+      {/* card */}
       <div style={{
-        background: "#fff", borderRadius: 24, padding: "36px 28px", width: "100%", maxWidth: 380,
-        boxShadow: "0 24px 64px rgba(0,0,0,.25)",
+        background: "#fff", borderRadius: 24, padding: "28px 24px 24px", width: "100%", maxWidth: 390,
+        boxShadow: "0 20px 60px rgba(0,0,0,.25)", zIndex: 1,
       }}>
-        <div style={{ textAlign: "center", marginBottom: 28 }}>
-          <div style={{ fontSize: 40, marginBottom: 8 }}>💳</div>
-          <h1 style={{ fontFamily: "'Poppins', sans-serif", fontSize: 22, fontWeight: 700, margin: 0, color: "#1a1233" }}>
-            Gestão de Pagamentos
-          </h1>
-          <p style={{ color: "#6b7280", fontSize: 13, margin: "6px 0 0", fontFamily: "'Poppins', sans-serif" }}>
-            {mode === "login" ? "Entre na sua conta" : "Crie sua conta gratuita"}
-          </p>
-        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <input
+          {/* email */}
+          <div>
+            <label style={{ fontFamily: F, fontSize: 13, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Login</label>
+            <div style={{ position: "relative" }}>
+              <svg style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", opacity: .45 }} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" strokeWidth="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+              <input style={inputBase} type="email" placeholder="Digite seu e-mail" value={email}
+                onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === "Enter" && submit()} />
+            </div>
+          </div>
+
+          {/* password */}
+          {mode !== "reset" && (
+            <div>
+              <label style={{ fontFamily: F, fontSize: 13, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Senha</label>
+              <div style={{ position: "relative" }}>
+                <svg style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", opacity: .45 }} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                <input style={{ ...inputBase, paddingRight: 44 }} type={showPw ? "text" : "password"}
+                  placeholder="Digite sua senha" value={password}
+                  onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === "Enter" && submit()} />
+                <button type="button" onClick={() => setShowPw(p => !p)} style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", padding: 0, opacity: .5 }}>
+                  {showPw
+                    ? <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                    : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* remember + forgot */}
+          {mode === "login" && (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: -4 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 7, cursor: "pointer", fontFamily: F, fontSize: 12, color: "#6b7280" }}>
+                <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)}
+                  style={{ width: 15, height: 15, accentColor: "#7C3AED", cursor: "pointer" }} />
+                Lembrar meu login
+              </label>
+              <button type="button" onClick={() => switchMode("reset")}
+                style={{ background: "none", border: "none", color: "#7C3AED", fontFamily: F, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                Esqueci minha senha
+              </button>
+            </div>
+          )}
+
+          {/* feedback */}
+          {error && <p style={{ color: "#ef4444", fontSize: 12, margin: 0, fontFamily: F, background: "#fef2f2", borderRadius: 8, padding: "8px 12px" }}>{error}</p>}
+          {success && <p style={{ color: "#059669", fontSize: 12, margin: 0, fontFamily: F, background: "#ecfdf5", borderRadius: 8, padding: "8px 12px" }}>{success}</p>}
+
+          {/* main button */}
+          <button type="button" onClick={submit}
+            disabled={loading || !email || (mode !== "reset" && !password)}
             style={{
-              border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "12px 14px",
-              fontSize: 14, fontFamily: "'Poppins', sans-serif", outline: "none", width: "100%",
-            }}
-            type="email" placeholder="E-mail" value={email}
-            onChange={e => setEmail(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && submit()}
-          />
-          <input
-            style={{
-              border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "12px 14px",
-              fontSize: 14, fontFamily: "'Poppins', sans-serif", outline: "none", width: "100%",
-            }}
-            type="password" placeholder="Senha (mínimo 6 caracteres)" value={password}
-            onChange={e => setPassword(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && submit()}
-          />
-          {error && <p style={{ color: "#ef4444", fontSize: 12, margin: 0, fontFamily: "'Poppins', sans-serif" }}>{error}</p>}
-          {success && <p style={{ color: "#10b981", fontSize: 12, margin: 0, fontFamily: "'Poppins', sans-serif" }}>{success}</p>}
-          <button
-            type="button"
-            disabled={loading || !email || !password}
-            onClick={submit}
-            style={{
-              background: "#7C3AED", color: "#fff", border: "none", borderRadius: 11,
-              padding: "13px", fontSize: 15, fontWeight: 700, cursor: "pointer",
-              fontFamily: "'Poppins', sans-serif", opacity: (loading || !email || !password) ? 0.6 : 1,
-              marginTop: 4,
-            }}
-          >
-            {loading ? "Aguarde…" : mode === "login" ? "Entrar" : "Criar conta"}
+              background: "linear-gradient(135deg, #7C3AED, #5B21B6)", color: "#fff", border: "none",
+              borderRadius: 14, padding: "15px", fontSize: 15, fontWeight: 700, cursor: "pointer",
+              fontFamily: F, opacity: (loading || !email || (mode !== "reset" && !password)) ? 0.6 : 1,
+              boxShadow: "0 4px 16px rgba(124,58,237,.4)", marginTop: 2,
+            }}>
+            {loading ? "Aguarde…" : mode === "login" ? "Entrar" : mode === "signup" ? "Criar conta" : "Enviar e-mail"}
           </button>
+
+          {/* biometrics */}
+          {mode === "login" && (
+            <>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "2px 0" }}>
+                <div style={{ flex: 1, height: 1, background: "#e5e7eb" }} />
+                <span style={{ fontFamily: F, fontSize: 12, color: "#9ca3af" }}>ou</span>
+                <div style={{ flex: 1, height: 1, background: "#e5e7eb" }} />
+              </div>
+              <button type="button" onClick={tryBiometric}
+                style={{
+                  background: "#fff", color: "#374151", border: "1.5px solid #e5e7eb",
+                  borderRadius: 14, padding: "13px", fontSize: 14, fontWeight: 600, cursor: "pointer",
+                  fontFamily: F, display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" strokeWidth="1.8">
+                  <path d="M12 2C8 2 5 5 5 9v1M12 2c4 0 7 3 7 7v1M8 22c0-2.2.9-4.2 2.3-5.7M15.7 16.3A7.96 7.96 0 0116 18M12 12v4M9 12a3 3 0 016 0"/>
+                  <path d="M5 14c0 3.9 3.1 7 7 7s7-3.1 7-7"/>
+                </svg>
+                Entrar com biometria
+              </button>
+            </>
+          )}
         </div>
 
-        <p style={{ textAlign: "center", marginTop: 20, fontSize: 13, color: "#6b7280", fontFamily: "'Poppins', sans-serif" }}>
-          {mode === "login" ? "Não tem conta? " : "Já tem conta? "}
-          <button
-            type="button"
-            onClick={() => { setMode(mode === "login" ? "signup" : "login"); setError(""); setSuccess(""); }}
-            style={{ background: "none", border: "none", color: "#7C3AED", fontWeight: 700, cursor: "pointer", fontFamily: "'Poppins', sans-serif", fontSize: 13 }}
-          >
-            {mode === "login" ? "Cadastre-se" : "Faça login"}
+        {/* bottom link */}
+        <p style={{ textAlign: "center", marginTop: 20, marginBottom: 0, fontSize: 13, color: "#6b7280", fontFamily: F }}>
+          {mode === "login" ? "Ainda não tem uma conta? " : mode === "signup" ? "Já tem conta? " : "Lembrou a senha? "}
+          <button type="button"
+            onClick={() => switchMode(mode === "login" ? "signup" : "login")}
+            style={{ background: "none", border: "none", color: "#7C3AED", fontWeight: 700, cursor: "pointer", fontFamily: F, fontSize: 13 }}>
+            {mode === "login" ? "Criar conta" : "Fazer login"}
           </button>
         </p>
       </div>
