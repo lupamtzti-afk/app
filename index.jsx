@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { createClient } from '@supabase/supabase-js'
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL ?? '',
-  import.meta.env.VITE_SUPABASE_ANON_KEY ?? ''
-)
+const _sbUrl = import.meta.env.VITE_SUPABASE_URL
+const _sbKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+const supabase = (_sbUrl && _sbKey) ? createClient(_sbUrl, _sbKey) : null
 
 /* ------------------------------------------------------------------ */
 /*  Controle de Parcelas — gerenciador de gastos no cartão de crédito  */
@@ -180,6 +179,7 @@ export default function App() {
 
   // auth listener
   useEffect(() => {
+    if (!supabase) { setAuthLoading(false); return; }
     supabase.auth.getSession().then(({ data: { session: s } }) => {
       setSession(s);
       setAuthLoading(false);
@@ -341,6 +341,15 @@ export default function App() {
   }, [expenses, enrich]);
 
   /* ------------------------------ render ---------------------------- */
+  if (!supabase) return (
+    <div style={{ minHeight: "100vh", background: "linear-gradient(135deg, #7C3AED 0%, #5B21B6 100%)", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16, padding: 24 }}>
+      <div style={{ color: "#fff", fontFamily: "'Poppins', sans-serif", fontSize: 18, fontWeight: 700 }}>Configuração incompleta</div>
+      <div style={{ color: "rgba(255,255,255,.8)", fontFamily: "'Poppins', sans-serif", fontSize: 13, textAlign: "center", maxWidth: 320 }}>
+        As variáveis <b>VITE_SUPABASE_URL</b> e <b>VITE_SUPABASE_ANON_KEY</b> não foram encontradas.<br /><br />
+        Adicione-as nos Secrets do repositório no GitHub e faça um novo deploy.
+      </div>
+    </div>
+  );
   if (authLoading) return (
     <div style={{ minHeight: "100vh", background: "linear-gradient(135deg, #7C3AED 0%, #5B21B6 100%)", display: "flex", alignItems: "center", justifyContent: "center" }}>
       <div style={{ color: "#fff", fontFamily: "'Poppins', sans-serif", fontSize: 16 }}>Carregando…</div>
