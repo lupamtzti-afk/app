@@ -46,23 +46,16 @@ const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(
 const store = {
   async get(key, fallback) {
     try {
-      if (typeof window !== "undefined" && window.storage) {
-        const r = await window.storage.get(key);
-        return r ? JSON.parse(r.value) : fallback;
-      }
+      const val = localStorage.getItem(key);
+      return val !== null ? JSON.parse(val) : fallback;
     } catch (e) {
-      /* key not found or no storage — use fallback */
+      return fallback;
     }
-    return fallback;
   },
   async set(key, value) {
     try {
-      if (typeof window !== "undefined" && window.storage) {
-        await window.storage.set(key, JSON.stringify(value));
-      }
-    } catch (e) {
-      /* storage unavailable — silently keep in-memory state */
-    }
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch (e) {}
   },
 };
 
